@@ -38,7 +38,7 @@ pico_sdk_init()
 
 # Add executable. Default name is the project name, version 0.1
 add_executable(plant_moisture_monitor
-    src/main.c
+    src/plant_moisture_monitor.c
     # Add other source files here as needed
 )
 pico_set_program_name(plant_moisture_monitor "plant_moisture_monitor")
@@ -61,6 +61,8 @@ target_include_directories(plant_moisture_monitor PRIVATE
 target_link_libraries(plant_moisture_monitor 
         hardware_clocks
         pico_cyw43_arch_lwip_threadsafe_background
+        hardware_adc
+        hardware_pio
         )
 
 pico_add_extra_outputs(plant_moisture_monitor)
