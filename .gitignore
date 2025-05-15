@@ -54,6 +54,7 @@ dkms.conf
 # Ignore example code
 *RPi_Pico_W/blink
 *RPi_Pico_W/adc_dma_capture
+*RPi_Pico_W/test
 
 # Ignore vscode stuff
 *.vscode/
