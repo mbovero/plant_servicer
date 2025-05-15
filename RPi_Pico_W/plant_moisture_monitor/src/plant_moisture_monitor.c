@@ -1,40 +1,134 @@
 #include <stdio.h>
 #include "pico/stdlib.h"
+#include "pico/cyw43_arch.h"
 #include "hardware/adc.h"
+#include "lwip/tcp.h"
+#include "secrets.h"
 
-uint16_t read_adc()
-{
+// Structure to hold our request data
+typedef struct {
+    char request[256];
+    uint16_t length;
+} http_request_t;
+
+uint16_t read_adc() {
     static uint input = 0;
-    adc_select_input(input); // 0 for GPIO 26, 1 for GPIO 27
+    adc_select_input(input);
     uint16_t raw = adc_read();
     float voltage = raw * 3.3f / 4095;
     printf("ADC%u raw: %u, voltage: %.2f V\n", input, raw, voltage);
-    input ^= 1; // Toggle between ADC 0 and 1
+    input ^= 1;
     return raw;
 }
 
-int main() 
-{
-    // Initialize stdio for serial output
-    stdio_init_all();
+static err_t tcp_sent_callback(void *arg, struct tcp_pcb *tpcb, u16_t len) {
+    printf("Data sent successfully\n");
+    tcp_close(tpcb);
+    return ERR_OK;
+}
+
+static err_t tcp_connected_callback(void *arg, struct tcp_pcb *tpcb, err_t err) {
+    if (err != ERR_OK) {
+        printf("Connect failed\n");
+        return err;
+    }
+
+    http_request_t *req = (http_request_t *)arg;
     
-    // Initialize ADC hardware
-    adc_init();
-    
-    // Make sure GPIO is high-impedance, no pullups etc
-    adc_gpio_init(26);
-    adc_gpio_init(27);
-    
-    printf("Pico W ADC Reader\n");
-    
-    while (1) 
-    {
-        // Read both ADC channels
-        uint16_t result = read_adc();
-        
-        // Simple delay - adjust as needed
-        sleep_ms(500);
+    printf("Sending %d bytes:\n", req->length);
+    for(int i = 0; i < req->length; i++) {
+        printf("%02x ", req->request[i]);
+    }
+    printf("\n");
+
+    tcp_sent(tpcb, tcp_sent_callback);
+    err_t write_err = tcp_write(tpcb, req->request, req->length, TCP_WRITE_FLAG_COPY);
+    if (write_err != ERR_OK) {
+        printf("Write error: %d\n", write_err);
+        tcp_close(tpcb);
+        return write_err;
     }
     
-    return 0;
+    err_t output_err = tcp_output(tpcb);
+    if (output_err != ERR_OK) {
+        printf("Output error: %d\n", output_err);
+        tcp_close(tpcb);
+        return output_err;
+    }
+    
+    return ERR_OK;
+}
+
+void send_adc_to_server(uint16_t adc_value) {
+    // Create a persistent request structure
+    static http_request_t req;
+    
+    // Create JSON body
+    char json_body[32];
+    int body_len = snprintf(json_body, sizeof(json_body), "{\"value\":%d}", adc_value);
+    
+    // Build complete HTTP request
+    req.length = snprintf(req.request, sizeof(req.request),
+        "POST /update HTTP/1.1\r\n"
+        "Host: %s:%d\r\n"
+        "User-Agent: PicoW\r\n"
+        "Content-Type: application/json\r\n"
+        "Content-Length: %d\r\n"
+        "Connection: close\r\n"
+        "\r\n"
+        "%s",
+        SERVER_IP, SERVER_PORT, body_len, json_body);
+
+    printf("Constructed request (%d bytes):\n%.*s\n", req.length, req.length, req.request);
+
+    struct tcp_pcb *pcb = tcp_new();
+    if (!pcb) {
+        printf("Failed to create PCB\n");
+        return;
+    }
+
+    ip_addr_t addr;
+    if (!ipaddr_aton(SERVER_IP, &addr)) {
+        printf("Invalid IP\n");
+        tcp_close(pcb);
+        return;
+    }
+
+    err_t err = tcp_connect(pcb, &addr, SERVER_PORT, tcp_connected_callback);
+    if (err != ERR_OK) {
+        printf("Connect error: %d\n", err);
+        tcp_close(pcb);
+        return;
+    }
+
+    tcp_arg(pcb, &req);
+}
+
+int main() {
+    stdio_init_all();
+    adc_init();
+    adc_gpio_init(26);
+    adc_gpio_init(27);
+
+    if (cyw43_arch_init()) {
+        printf("Wi-Fi init failed\n");
+        return -1;
+    }
+
+    cyw43_arch_enable_sta_mode();
+    
+    printf("Connecting to Wi-Fi...\n");
+    if (cyw43_arch_wifi_connect_timeout_ms(WIFI_SSID, WIFI_PASSWORD, 
+                                          CYW43_AUTH_WPA2_AES_PSK, 30000)) {
+        printf("Failed to connect\n");
+        return 1;
+    }
+    
+    printf("Connected!\n");
+    
+    while (true) {
+        uint16_t adc_value = read_adc();
+        send_adc_to_server(adc_value);
+        sleep_ms(5000);
+    }
 }

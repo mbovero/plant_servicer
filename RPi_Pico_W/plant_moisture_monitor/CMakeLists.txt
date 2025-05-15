@@ -43,6 +43,9 @@ pico_set_program_version(plant_moisture_monitor "0.1")
 pico_enable_stdio_uart(plant_moisture_monitor 0)
 pico_enable_stdio_usb(plant_moisture_monitor 1)
 
+# Add the standard library to the build
+target_link_libraries(plant_moisture_monitor
+        pico_stdlib)
 
 # Include directories
 target_include_directories(plant_moisture_monitor PRIVATE
@@ -50,13 +53,12 @@ target_include_directories(plant_moisture_monitor PRIVATE
     ${CMAKE_CURRENT_LIST_DIR}/inc
 )
 
-# Link all required libraries
-target_link_libraries(plant_moisture_monitor
-    pico_stdlib
-    hardware_adc
-    hardware_pio
-    hardware_clocks
-)
+# Add any user requested libraries
+target_link_libraries(plant_moisture_monitor 
+        pico_cyw43_arch_lwip_threadsafe_background
+        hardware_adc
+        
+        )
 
 # Generate additional output formats
 pico_add_extra_outputs(plant_moisture_monitor)
