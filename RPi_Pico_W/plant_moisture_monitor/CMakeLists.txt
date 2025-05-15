@@ -1,16 +1,10 @@
 include_directories(inc)
 
-
-# Generated Cmake Pico project file
-
 cmake_minimum_required(VERSION 3.13)
 
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
-
-# Initialise pico_sdk from installed location
-# (note this can come from environment, CMake cache etc)
 
 # == DO NOT EDIT THE FOLLOWING LINES for the Raspberry Pi Pico VS Code Extension to work ==
 if(WIN32)
@@ -26,6 +20,7 @@ if (EXISTS ${picoVscode})
     include(${picoVscode})
 endif()
 # ====================================================================================
+
 set(PICO_BOARD pico_w CACHE STRING "Board type")
 
 # Pull in Raspberry Pi Pico SDK (must be before project)
@@ -36,34 +31,40 @@ project(plant_moisture_monitor C CXX ASM)
 # Initialise the Raspberry Pi Pico SDK
 pico_sdk_init()
 
-# Add executable. Default name is the project name, version 0.1
+# Add executable
 add_executable(plant_moisture_monitor
     src/plant_moisture_monitor.c
-    # Add other source files here as needed
 )
+
 pico_set_program_name(plant_moisture_monitor "plant_moisture_monitor")
 pico_set_program_version(plant_moisture_monitor "0.1")
 
-# Modify the below lines to enable/disable output over UART/USB
+# Enable USB stdio (disable UART)
 pico_enable_stdio_uart(plant_moisture_monitor 0)
 pico_enable_stdio_usb(plant_moisture_monitor 1)
 
-# Add the standard library to the build
-target_link_libraries(plant_moisture_monitor
-        pico_stdlib)
-
-# Add the standard include files to the build
-target_include_directories(plant_moisture_monitor PRIVATE
-        ${CMAKE_CURRENT_LIST_DIR}
+# WiFi/LWIP Configuration
+target_compile_definitions(plant_moisture_monitor PRIVATE
+    PICO_CYW43_ARCH_THREADSAFE_BACKGROUND=1
+    CYW43_LWIP=1
+    LWIP_SOCKET=1
 )
 
-# Add any user requested libraries
-target_link_libraries(plant_moisture_monitor 
-        hardware_clocks
-        pico_cyw43_arch_lwip_threadsafe_background
-        hardware_adc
-        hardware_pio
-        )
+# Include directories
+target_include_directories(plant_moisture_monitor PRIVATE
+    ${CMAKE_CURRENT_LIST_DIR}
+    ${CMAKE_CURRENT_LIST_DIR}/inc
+)
 
+# Link all required libraries
+target_link_libraries(plant_moisture_monitor
+    pico_stdlib
+    hardware_adc
+    hardware_pio
+    hardware_clocks
+    pico_cyw43_arch_lwip_threadsafe_background
+    pico_cyw43_driver
+)
+
+# Generate additional output formats
 pico_add_extra_outputs(plant_moisture_monitor)
-
