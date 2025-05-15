@@ -43,12 +43,6 @@ pico_set_program_version(plant_moisture_monitor "0.1")
 pico_enable_stdio_uart(plant_moisture_monitor 0)
 pico_enable_stdio_usb(plant_moisture_monitor 1)
 
-# WiFi/LWIP Configuration
-target_compile_definitions(plant_moisture_monitor PRIVATE
-    PICO_CYW43_ARCH_THREADSAFE_BACKGROUND=1
-    CYW43_LWIP=1
-    LWIP_SOCKET=1
-)
 
 # Include directories
 target_include_directories(plant_moisture_monitor PRIVATE
@@ -62,8 +56,6 @@ target_link_libraries(plant_moisture_monitor
     hardware_adc
     hardware_pio
     hardware_clocks
-    pico_cyw43_arch_lwip_threadsafe_background
-    pico_cyw43_driver
 )
 
 # Generate additional output formats
