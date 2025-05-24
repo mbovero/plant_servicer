@@ -4,6 +4,7 @@
 #include "hardware/adc.h"
 #include "lwip/tcp.h"
 #include "secrets.h"
+#include "seven_segs.h"
 
 // Structure to hold our request data
 typedef struct {
@@ -15,13 +16,23 @@ typedef struct {
 #define MAX_CONNECTION_ATTEMPTS 5
 #define RETRY_DELAY_MS 2000
 
+const uint BTN_PIN = 12;
+bool btn_toggle = 0;
+#define DEBOUNCE_MASK 0xF0000000  // Adjust mask for sensitivity
+
+const float soil_density = 0.321;   // g/mL
+const float pot_volume = 0.321;     // mL
+
 uint16_t read_adc() {
     static uint input = 0;
+
+    input = btn_toggle;
+
     adc_select_input(input);
     uint16_t raw = adc_read();
     float voltage = raw * 3.3f / 4095;
     printf("ADC%u raw: %u, voltage: %.2f V\n", input, raw, voltage);
-    input ^= 1;
+    //input ^= 1;
     return raw;
 }
 
@@ -144,29 +155,66 @@ bool connect_to_wifi() {
 
 int main() {
     stdio_init_all();
+
     adc_init();
     adc_gpio_init(26);
     adc_gpio_init(27);
-
-    // Initialize WiFi with retries
-    if (!connect_to_wifi()) {
-        printf("Failed to connect to WiFi after multiple attempts\n");
-        return 1;
-    }
     
-    // Blink LED quickly to indicate successful connection
-    for (int i = 0; i < 8; i++) {
-        cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, 1);
-        sleep_ms(100);
-        cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, 0);
-        sleep_ms(100);
-    }
+    init_display();
+    gpio_init(BTN_PIN);
+    gpio_set_dir(BTN_PIN, GPIO_IN);
+
+    // // Initialize WiFi with retries
+    // if (!connect_to_wifi()) {
+    //     printf("Failed to connect to WiFi after multiple attempts\n");
+    //     return 1;
+    // }
+    
+    // // Blink LED quickly to indicate successful connection
+    // for (int i = 0; i < 8; i++) {
+    //     cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, 1);
+    //     sleep_ms(100);
+    //     cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, 0);
+    //     sleep_ms(100);
+    // }
     
     printf("Starting main loop...\n");
     
     while (true) {
         uint16_t adc_value = read_adc();
-        send_adc_to_server(adc_value);
-        sleep_ms(5000);
+        double voltage = adc_value * 3.3f / 4095;
+        double wsd_mL_ratio = 1.91/0.528; // This is a ratio between water-soil density and moisture sensor voltage [V / (g/mL)]
+        double pot_wsd = wsd_mL_ratio * voltage; // Water-soil density currently in the pot
+
+        double ws_mass = pot_wsd * pot_volume;
+        double soil_mass = soil_density * pot_volume;
+        double water_mass = (ws_mass - soil_mass);
+
+
+        static uint32_t btn_debounce = 0;
+        static bool btn_state = 0;
+        static bool prev_btn_state = 0;
+
+        prev_btn_state = btn_state;
+        // Shift in current state (1 if pressed, 0 if released)
+        btn_debounce = (btn_debounce << 1) | (gpio_get(BTN_PIN) ? 1 : 0);
+        
+        // Check for debounced press (all 1s in upper bits)
+        if ((btn_debounce & DEBOUNCE_MASK) == DEBOUNCE_MASK) {
+            btn_state = true;
+        } 
+        // Check for debounced release (all 0s in upper bits)
+        else if ((btn_debounce & DEBOUNCE_MASK) == 0) {
+            btn_state = false;
+        }
+
+        if (!prev_btn_state && btn_state)
+            btn_toggle = !btn_toggle;
+
+        // display_number(adc_value);
+        //display_number(voltage*1000);
+        display_number(ws_mass*1000);
+        // send_adc_to_server(adc_value);
+        // sleep_ms(5000);
     }
 }
